@@ -81,8 +81,6 @@ export const makePrompt = (input: string) => {
 };
 
 export const translate = async (prompted: string, onToken: OnToken) => {
-  console.log('defw ', prompted);
-
   const stream = await client.responses.create({
     model: 'gpt-4o-mini',
     input: [
@@ -109,4 +107,42 @@ export const translate = async (prompted: string, onToken: OnToken) => {
       onToken(END_SIGNAL);
     }
   }
+};
+
+export const translateOnce = async (prompted: string) => {
+  console.log('영어가 뭐가 들어왔지?', prompted);
+  if (prompted === undefined) return null;
+
+  const res = await client.responses.create({
+    model: 'gpt-4o-mini',
+    input: [
+      {
+        role: 'system',
+        content:
+          'You are a helpful assistant, translator, expert at english and korean.',
+      },
+      {
+        role: 'user',
+        content: `
+Translate below english to korean. The input English sentence may have typos or spacing issues, but try to translate it into Korean as accurately as possible anyway. The translation should sound more like spoken language than written text, with a natural tone—not too casual, but still conversational.
+Please translate it using polite/formal Korean. 존댓말로 번역해달라는 뜻이야.
+
+-- Example English --
+I was wondering if you had a chance to review the proposal I sent last week. If there’s anything unclear or if you'd like to discuss it further, I’d be happy to talk.
+
+-- Example Korean --
+지난주에 제가 보내드린 제안서 혹시 한번 검토해보셨나요? 혹시라도 잘 안 보이거나 더 얘기 나눠보고 싶으신 부분 있으시면, 언제든 편하게 말씀 주세요.
+
+-- Input English --
+${prompted}
+
+-- Korean --
+`,
+      },
+    ],
+  });
+
+  console.log('Res : ', res);
+  if (res.output_text) return res.output_text;
+  return null;
 };

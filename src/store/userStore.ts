@@ -4,23 +4,23 @@ import { create } from 'zustand';
 type State = {
   userId: string | null;
   context: string;
-  persona: string;
+  fontSize: number;
   reference: string;
 
   setUserId: (userId: string) => void;
   setContext: (context: string) => void;
-  setPersona: (persona: string) => void;
+  setFontSize: (fontSize: number) => void;
   setReference: (reference: string) => void;
 };
 
 export const useUserStore = create<State>((set) => ({
   userId: null,
   context: '',
-  persona: '',
+  fontSize: 15,
   reference: '',
 
   setUserId: (userId) => set(() => ({ userId })),
   setContext: (context) => set(() => ({ context })),
-  setPersona: (persona) => set(() => ({ persona })),
+  setFontSize: (fontSize) => set(() => ({ fontSize })),
   setReference: (reference) => set(() => ({ reference })),
 }));

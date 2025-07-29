@@ -1,3 +1,4 @@
+/* eslint-disable no-multi-assign */
 /* eslint-disable promise/always-return */
 /* eslint-disable no-plusplus */
 /* eslint-disable no-undef */
@@ -13,6 +14,9 @@ import {
 import path from 'path';
 import WebSocket from 'ws';
 import { spawn } from 'child_process';
+import { autoUpdater } from 'electron-updater';
+import log from 'electron-log';
+
 import { openKey } from '../lib/openai';
 import { resolveHtmlPath } from './util';
 import MenuBuilder from './menu';
@@ -23,63 +27,26 @@ let heartbeat: NodeJS.Timeout | null = null;
 let mainWin: BrowserWindow | null = null;
 let scriptWindow: BrowserWindow | null = null;
 let settingWindow: BrowserWindow | null = null;
-let modalWindow: BrowserWindow | null = null;
+let micWindow: BrowserWindow | null = null;
 
+class AppUpdater {
+  constructor() {
+    log.transports.file.level = 'info';
+    autoUpdater.logger = log;
+    autoUpdater.checkForUpdatesAndNotify();
+  }
+}
 ipcMain.on('ipc-example', async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
   console.log(msgTemplate(arg));
 });
 
-function createWindow() {
-  mainWin = new BrowserWindow({
-    width: 800,
-    height: 600,
-    webPreferences: {
-      preload: app.isPackaged // preload 스크립트는 renderer에 안전한 API를 전달하기 위한 브릿지
-        ? path.join(__dirname, 'preload.js')
-        : path.join(__dirname, '../../.erb/dll/preload.js'),
-    },
-  });
-
-  mainWin.loadURL(resolveHtmlPath('index.html'));
-  mainWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false });
-
-  mainWin.on('ready-to-show', () => {
-    if (!mainWin) {
-      throw new Error('"mainWin" is not defined');
-    }
-    if (process.env.START_MINIMIZED) {
-      mainWin.minimize();
-    } else {
-      mainWin.show();
-    }
-  });
-
-  mainWin.on('closed', () => {
-    mainWin = null; // 창이 닫히면 변수 초기화 -> garbage collector 유도
-  });
-
-  const menuBuilder = new MenuBuilder(mainWin);
-  menuBuilder.buildMenu();
-
-  // Open urls in the user's browser
-  mainWin.webContents.setWindowOpenHandler((edata) => {
-    shell.openExternal(edata.url);
-    return { action: 'deny' };
-  });
-
-  // Remove this if your app does not use auto updates
-  // eslint-disable-next-line
-  // new AppUpdater();
-}
-
 const startWindow = async () => {
   // if (isDebug) await installExtensions();
-
   const { width: screenWidth, height: screenHeight } =
     screen.getPrimaryDisplay().workAreaSize;
 
-  const width = 360;
+  const width = 320;
   const height = 56;
 
   mainWin = new BrowserWindow({
@@ -138,14 +105,14 @@ async function openOverlayWindow() {
   const { width: screenWidth, height: screenHeight } =
     screen.getPrimaryDisplay().workAreaSize;
 
-  const width = 440;
-  const height = 210;
+  const width = 640;
+  const height = 380;
 
   scriptWindow = new BrowserWindow({
     width: width,
     height: height,
     x: screenWidth / 2 - width / 2,
-    y: 102,
+    y: 88,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -161,10 +128,44 @@ async function openOverlayWindow() {
   scriptWindow.loadURL('http://localhost:1212/index.html?overlay=1');
   scriptWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   // scriptWindow.setIgnoreMouseEvents(true, { forward: true });
-  // scriptWindow.webContents.openDevTools({ mode: 'detach' });
+  scriptWindow.webContents.openDevTools({ mode: 'detach' });
 
   scriptWindow.on('closed', () => {
     scriptWindow = null; // 창이 닫히면 변수 초기화 -> garbage collector 유도
+  });
+}
+
+async function openMicWindow() {
+  const { width: screenWidth, height: screenHeight } =
+    screen.getPrimaryDisplay().workAreaSize;
+
+  const width = 640;
+  const height = 380;
+
+  micWindow = new BrowserWindow({
+    width: width,
+    height: height,
+    x: screenWidth / 2 - width / 2,
+    y: 88,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    hasShadow: false,
+    focusable: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  micWindow.loadURL('http://localhost:1212/index.html?overlay=1');
+  micWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // scriptWindow.setIgnoreMouseEvents(true, { forward: true });
+  micWindow.webContents.openDevTools({ mode: 'detach' });
+
+  micWindow.on('closed', () => {
+    micWindow = null; // 창이 닫히면 변수 초기화 -> garbage collector 유도
   });
 }
 
@@ -222,44 +223,79 @@ const connectSocket = async () => {
       session: {
         input_audio_format: 'pcm16',
         input_audio_transcription: {
-          model: 'gpt-4o-transcribe',
+          model: 'gpt-4o-mini-transcribe',
+          prompt: '',
           language: 'en',
         },
         turn_detection: {
           type: 'server_vad',
-          threshold: 0.3,
+          threshold: 0.5,
           prefix_padding_ms: 200,
-          silence_duration_ms: 100,
+          silence_duration_ms: 80,
         },
         input_audio_noise_reduction: { type: 'near_field' },
       },
     };
+
     sttSocket?.send(JSON.stringify(initMsg));
-    console.log('\n\n보냅니다\n\n');
+    console.log('\n\nSocket setting update\n\n');
     // Heartbeat
     heartbeat = setInterval(() => {
       if (sttSocket?.readyState === WebSocket.OPEN) sttSocket.ping();
     }, 30000);
   });
 
-  sttSocket.on('message', (data) => {
-    let msg: any;
-    try {
-      msg = JSON.parse(data.toString());
-    } catch {
-      return;
-    }
+  // 예: delta를 100ms 안에 모아서 전달
+  let deltaBuffer: string[] = [];
+  let deltaTimeout: NodeJS.Timeout | null = null;
+  let inactivityTimer: NodeJS.Timeout | null = null;
 
-    if (msg.delta && scriptWindow) {
-      console.log('\ndelta - : ', msg.delta);
-      scriptWindow.webContents.send('send-transcript', msg.delta);
+  const TIMEOUT_DELTA = 100;
+  const TIMEOUT_INACTIVITY = 2000;
+  const STOP_WORDS = ['.', '?', '!'];
+
+  const sendBuffer = (buf: string[]) => {
+    scriptWindow?.webContents.send('send-transcript', {
+      type: 'delta',
+      text: buf.join(''),
+    });
+  };
+
+  const resetInactivityTimer = () => {
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    inactivityTimer = setTimeout(() => {
+      if (deltaBuffer.length > 0) {
+        sendBuffer(deltaBuffer);
+        deltaBuffer = [];
+      }
+    }, TIMEOUT_INACTIVITY);
+  };
+
+  // sttSocket.onmessage;
+  sttSocket.on('message', (data) => {
+    const msg = JSON.parse(data.toString());
+    console.log('delta : ', msg);
+
+    if (msg.delta) {
+      // 바로 보내기
+      scriptWindow?.webContents.send('send-transcript', {
+        type: 'delta',
+        text: msg.delta,
+      });
+
+      // 비활성 타이머도 리셋
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      inactivityTimer = setTimeout(() => {
+        scriptWindow?.webContents.send('send-transcript', {
+          type: 'finalize', // 혹은 'inactivity-end' 등 원하는 타입
+        });
+      }, TIMEOUT_INACTIVITY);
     }
   });
 };
 
 const startOrStopSpeakerScripting = async () => {
-  // 여기에는 browser를 열고 닫는 로직만 있다. 시작-종료는 client 단에서 호출하도록 함.
-
+  // 여기에는 browser를 열고 닫는 로직만 있다. 현재 구현은 시작-종료는 client 단에서 버튼으로 호출하도록 함.
   if (scriptWindow === null) {
     // script 시작 + Open.
     console.log('Start scripting of speaker');
@@ -270,6 +306,18 @@ const startOrStopSpeakerScripting = async () => {
     console.log('Stop/End scripting of speaker');
     if (mainWin) mainWin.webContents.send('stop-speaker-scripting');
     scriptWindow.close();
+  }
+};
+
+const startOrStopMicScripting = async () => {
+  if (micWindow === null) {
+    console.log('Start scripting of speaker');
+    openMicWindow();
+    if (mainWin) mainWin.webContents.send('start-record-mic');
+  } else if (micWindow !== null) {
+    console.log('Stop/End scripting of speaker');
+    if (mainWin) mainWin.webContents.send('stop-record-mic');
+    micWindow.close();
   }
 };
 
@@ -302,10 +350,15 @@ app
       }
       if (settingWindow) settingWindow.close();
       if (scriptWindow) scriptWindow.close();
+      if (micWindow) micWindow.close();
     });
 
     globalShortcut.register('CommandOrControl+L', () => {
       startOrStopSpeakerScripting();
+    });
+
+    ipcMain.on('open-mic-window', async () => {
+      startOrStopMicScripting();
     });
 
     ipcMain.on('open-setup', async () => {
@@ -349,12 +402,12 @@ ipcMain.handle('stt-stop', () => {
   if (sttSocket && sttSocket.readyState === WebSocket.OPEN) {
     sttSocket.send(JSON.stringify({ type: 'session.close' }));
     sttSocket.close();
+    sttSocket = null;
   }
 });
 
 // This is for speaker audio capture
 let systemAudioProc: ReturnType<typeof spawn> | null = null;
-let ws: WebSocket | null = null;
 
 ipcMain.on('start-system-audio', async () => {
   if (process.platform !== 'darwin') return;
@@ -399,6 +452,7 @@ ipcMain.on('start-system-audio', async () => {
           type: 'input_audio_buffer.append',
           audio: base64Audio,
         };
+        // console.log('보내긴 보냅니다.');
         sttSocket.send(JSON.stringify(msg));
       }
     }
@@ -411,8 +465,9 @@ ipcMain.on('start-system-audio', async () => {
   systemAudioProc.on('close', () => {
     systemAudioProc = null;
     if (sttSocket && sttSocket.readyState === WebSocket.OPEN) {
-      sttSocket.send(JSON.stringify({ type: 'session.close' }));
-      sttSocket.close();
+      // sttSocket.send(JSON.stringify({ type: 'session.close' }));
+      sttSocket.onmessage = sttSocket.onerror = () => {};
+      sttSocket.close(1000, 'Client initiated close.');
       sttSocket = null;
     }
   });
@@ -422,21 +477,23 @@ ipcMain.on('stop-system-audio', () => {
   systemAudioProc?.kill('SIGTERM');
   systemAudioProc = null;
   if (sttSocket && sttSocket.readyState === WebSocket.OPEN) {
-    sttSocket.send(JSON.stringify({ type: 'session.close' }));
-    sttSocket.close();
+    // sttSocket.send(JSON.stringify({ type: 'session.close' }));
+    sttSocket.onmessage = sttSocket.onerror = () => {};
+    sttSocket.close(1000, 'Client initiated close.');
     sttSocket = null;
   }
 });
 
-function convertStereoToMono(stereo: Buffer) {
+const convertStereoToMono = (stereo: Buffer) => {
   const samples = stereo.length / 4;
   const mono = Buffer.alloc(samples * 2);
+
   for (let i = 0; i < samples; i++) {
     const left = stereo.readInt16LE(i * 4);
     mono.writeInt16LE(left, i * 2);
   }
   return mono;
-}
+};
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();

@@ -25,16 +25,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startSTT: () => ipcRenderer.invoke('stt-start'),
   stopSTT: () => ipcRenderer.invoke('stt-stop'),
   sendAudio: (buffer: ArrayBuffer) => ipcRenderer.send('stt-audio', buffer),
-  onTranscript: (callback: (text: string) => void) =>
-    ipcRenderer.on('send-transcript', (_, text) => {
-      callback(text);
+  onTranscript: (callback: (msg: { type: string; text: string }) => void) =>
+    ipcRenderer.on('send-transcript', (_, msg) => {
+      callback(msg);
     }),
 
   // 시스템 오디오 캡처 시작/종료
   startSystemAudio: () => ipcRenderer.send('start-system-audio'),
   stopSystemAudio: () => ipcRenderer.send('stop-system-audio'),
+  startMicAudio: () => ipcRenderer.send('start-mic-audio'),
+  stopMicAudio: () => ipcRenderer.send('stop-mic-audio'),
+
+  openMicWindow: () => {
+    ipcRenderer.send('open-mic-window');
+  },
   openSetup: () => {
-    console.log('오픈 셋업');
     ipcRenderer.send('open-setup');
   },
 });

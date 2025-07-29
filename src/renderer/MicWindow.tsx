@@ -9,11 +9,10 @@ import { useDataStore } from '../store/dataStore';
 import { useUserStore } from '../store/userStore';
 import { END_SIGNAL, translateOnce } from '../lib/chat';
 import ConfirmModal from './component/Modal';
+import { useMicStore } from '../store/micStore';
 
 export {}; // to make file a module
-
-const regex1 = '/( {2,})/g';
-const regex2 = ' +,|';
+const SPACE = ' ';
 
 function isFirstCharUppercase(text: string): boolean {
   if (!text) return false; // 빈 문자열 처리
@@ -31,12 +30,12 @@ function ScriptWindow() {
   const { fontSize, setFontSize } = useUserStore();
   const {
     lastSentence,
-    transcripts,
-    setTranscripts,
+    myTranscripts,
+    myTranslates,
     setLastSentence,
-    translates,
-    setTranslates,
-  } = useDataStore();
+    setMyTranscripts,
+    setMyTranslates,
+  } = useMicStore();
 
   // const [lastTranslation, setLastTranslation] = useState<string>('');
   // const tempSentence = useRef('');
@@ -60,12 +59,12 @@ function ScriptWindow() {
         if (['.', '?', '!'].includes(text[text.length - 1]) && l.length > 20) {
           const last = l.trim() + text[text.length - 1];
 
-          setTranscripts([...t, last]);
+          setMyTranscripts([...t, last]);
           setLastSentence('');
         } else {
           const isUpper = isFirstCharUppercase(text);
-          if (isUpper) {
-            setLastSentence(l + ' ' + text);
+          if (isUpper && text[0] !== SPACE) {
+            setLastSentence(l + SPACE + text);
           } else {
             setLastSentence(l + text);
           }
@@ -79,20 +78,23 @@ function ScriptWindow() {
 
   useEffect(() => {
     translateLastScript();
-  }, [transcripts]);
+  }, [myTranscripts]);
 
   const translateLastScript = async () => {
-    console.log('transcript : ', transcripts);
-    if (transcripts.length > translates.length && transcripts.length > 0) {
-      const lastScript = transcripts[transcripts.length - 1];
+    console.log('transcript : ', myTranscripts);
+    if (
+      myTranscripts.length > myTranslates.length &&
+      myTranscripts.length > 0
+    ) {
+      const lastScript = myTranscripts[myTranscripts.length - 1];
 
       // 번역 만들기
       if (lastScript !== undefined) {
         const returnedTranslation = await translateOnce(lastScript);
         if (returnedTranslation) {
-          setTranslates([...translates, returnedTranslation]);
+          setMyTranslates([...myTranslates, returnedTranslation]);
         } else {
-          setTranslates([...translates, 'Translation failed.']);
+          setMyTranslates([...myTranslates, 'Translation failed.']);
         }
       }
     }
@@ -100,16 +102,16 @@ function ScriptWindow() {
 
   const start = async () => {
     setIsRecording(true);
-    window.electronAPI.startSystemAudio();
+    window.electronAPI.startMicAudio();
   };
   const stop = () => {
     setIsRecording(false);
-    window.electronAPI.stopSystemAudio();
+    window.electronAPI.stopMicAudio();
   };
 
   const reset = () => {
-    setTranslates([]);
-    setTranscripts([]);
+    setMyTranslates([]);
+    setMyTranscripts([]);
     setLastSentence('');
   };
 
@@ -127,7 +129,7 @@ function ScriptWindow() {
       />
 
       <div className="titles">
-        <div>System Audio STT</div>
+        <div>My Audio STT</div>
         <div className="options">
           <div onClick={() => setFontSize(fontSize + 1)}>+</div>
           <div onClick={() => setFontSize(fontSize - 1)}>-</div>
@@ -154,14 +156,14 @@ function ScriptWindow() {
       </div>
       <div>script</div>
       <Transcripts fontSize={fontSize}>
-        {transcripts.map((item, index) => {
+        {myTranscripts.map((item, index) => {
           return (
             <div className="transcripts">
               <div key={`${item[0]}_${index}`} className="sent">
                 {item}
               </div>
               <div key={`trans_${index}`} className="translated">
-                {translates[index] ? translates[index] : 'translating...'}
+                {myTranslates[index] ? myTranslates[index] : 'translating...'}
               </div>
             </div>
           );

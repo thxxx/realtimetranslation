@@ -31,13 +31,16 @@ declare global {
       startSTT: () => Promise<void>; // websocket connection을 열고, session 정보 update
       stopSTT: () => Promise<void>;
       sendAudio: (buffer: ArrayBuffer) => void;
-      onTranscript: (cb: (text: string) => void) => void;
+      onTranscript: (cb: (msg: { type: string; text: string }) => void) => void;
       startSystemAudio: () => Promise<boolean>;
       stopSystemAudio: () => Promise<void>;
+      startMicAudio: () => Promise<boolean>;
+      stopMicAudio: () => Promise<void>;
       onSttUpdate: (
         cb: (data: { speaker: string; text: string; isFinal: boolean }) => void,
       ) => void;
       openSetup: () => void;
+      openMicWindow: () => void;
     };
   }
 }
@@ -45,6 +48,7 @@ declare global {
 const App = () => {
   const [animateOut, setAnimateOut] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingMic, setIsRecordingMic] = useState(false);
 
   useEffect(() => {
     let uid = localStorage.getItem('userId');
@@ -76,6 +80,14 @@ const App = () => {
     window.electron?.ipcRenderer.on('end-record', () => {
       setIsRecording(false);
     });
+
+    window.electron?.ipcRenderer.on('start-record-mic', () => {
+      setIsRecordingMic(true);
+    });
+
+    window.electron?.ipcRenderer.on('end-record-mic', () => {
+      setIsRecordingMic(false);
+    });
   }, []);
 
   const openSetupModal = () => {
@@ -91,11 +103,27 @@ const App = () => {
         </div>
       ) : (
         <div className="item blue">
-          <div>Select Area</div>
+          <div>Listen</div>
           <span>
             <img width={14} src={cmd} alt="cmd" />
           </span>
           <span>L</span>
+        </div>
+      )}
+      {isRecordingMic ? (
+        <div className="item red">
+          <div>Esc to cancel</div>
+        </div>
+      ) : (
+        <div
+          className="item blue"
+          onClick={() => window.electronAPI.openMicWindow()}
+        >
+          <div>Speak</div>
+          <span>
+            <img width={14} src={cmd} alt="cmd" />
+          </span>
+          <span>M</span>
         </div>
       )}
       {/* <div className="item">
@@ -158,7 +186,7 @@ const BaseContainer = styled.div<{ animateOut: boolean }>`
     justify-content: center;
     align-items: center;
     gap: 4px;
-    padding: 6px 14px;
+    padding: 4px 10px;
     align-self: stretch;
     cursor: pointer;
 
@@ -166,8 +194,8 @@ const BaseContainer = styled.div<{ animateOut: boolean }>`
 
     span {
       background: rgba(255, 255, 255, 0.6);
-      width: 20px;
-      height: 20px;
+      width: 16px;
+      height: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -182,12 +210,17 @@ const BaseContainer = styled.div<{ animateOut: boolean }>`
 
   .icon {
     padding: 6px;
-    width: 24px;
+    width: 20px;
   }
 
   .blue {
     background: #3f92db;
     color: white;
+    transition: 0.2s ease;
+
+    &:hover {
+      background: #2f82cb;
+    }
   }
 
   .red {
