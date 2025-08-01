@@ -12,9 +12,8 @@ import ConfirmModal from './component/Modal';
 import { useMicStore } from '../store/micStore';
 
 export {}; // to make file a module
-const SPACE = ' ';
-
-function isFirstCharUppercase(text: string): boolean {
+export const SPACE = ' ';
+export function isFirstCharUppercase(text: string): boolean {
   if (!text) return false; // 빈 문자열 처리
 
   const firstChar = text.charAt(0);
@@ -178,7 +177,7 @@ function ScriptWindow() {
 
 export default ScriptWindow;
 
-const ScriptContainer = styled.div`
+export const ScriptContainer = styled.div`
   background: white;
   width: 620px;
   height: 344px;
@@ -222,7 +221,7 @@ const ScriptContainer = styled.div`
   }
 `;
 
-const Transcripts = styled.div<{ fontSize: number }>`
+export const Transcripts = styled.div<{ fontSize: number }>`
   font-size: ${(props) => props.fontSize}px;
   padding: 8px 0px;
 

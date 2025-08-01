@@ -31,6 +31,7 @@ declare global {
       startSTT: () => Promise<void>; // websocket connection을 열고, session 정보 update
       stopSTT: () => Promise<void>;
       sendAudio: (buffer: ArrayBuffer) => void;
+      sendAudioStream: (buffer: string) => void;
       onTranscript: (cb: (msg: { type: string; text: string }) => void) => void;
       startSystemAudio: () => Promise<boolean>;
       stopSystemAudio: () => Promise<void>;

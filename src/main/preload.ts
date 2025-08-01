@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startSTT: () => ipcRenderer.invoke('stt-start'),
   stopSTT: () => ipcRenderer.invoke('stt-stop'),
   sendAudio: (buffer: ArrayBuffer) => ipcRenderer.send('stt-audio', buffer),
+  sendAudioStream: (buffer: string) =>
+    ipcRenderer.send('stt-audio-realtime', buffer),
   onTranscript: (callback: (msg: { type: string; text: string }) => void) =>
     ipcRenderer.on('send-transcript', (_, msg) => {
       callback(msg);

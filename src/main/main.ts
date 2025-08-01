@@ -1,3 +1,5 @@
+/* eslint-disable prefer-destructuring */
+/* eslint-disable object-shorthand */
 /* eslint-disable no-multi-assign */
 /* eslint-disable promise/always-return */
 /* eslint-disable no-plusplus */
@@ -16,8 +18,10 @@ import WebSocket from 'ws';
 import { spawn } from 'child_process';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
+import fs from 'fs';
+import os from 'os';
 
-import { openKey } from '../lib/openai';
+import { client, openKey } from '../lib/openai';
 import { resolveHtmlPath } from './util';
 import MenuBuilder from './menu';
 
@@ -52,7 +56,8 @@ const startWindow = async () => {
   mainWin = new BrowserWindow({
     width: width,
     height: height,
-    x: screenWidth / 2 - width / 2,
+    x: screenWidth,
+    // x: screenWidth / 2 - width / 2,
     y: 10,
     frame: false,
     transparent: true,
@@ -159,7 +164,7 @@ async function openMicWindow() {
     },
   });
 
-  micWindow.loadURL('http://localhost:1212/index.html?overlay=1');
+  micWindow.loadURL('http://localhost:1212/index.html?mic=1');
   micWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   // scriptWindow.setIgnoreMouseEvents(true, { forward: true });
   micWindow.webContents.openDevTools({ mode: 'detach' });
@@ -173,7 +178,7 @@ async function openSetupWindow() {
   const { width: screenWidth, height: screenHeight } =
     screen.getPrimaryDisplay().workAreaSize;
 
-  const width = 660;
+  const width = 810;
   const height = 560;
 
   settingWindow = new BrowserWindow({
@@ -203,7 +208,7 @@ async function openSetupWindow() {
   });
 }
 
-const connectSocket = async () => {
+const connectSocket = async (typed: 'speaker' | 'mic') => {
   if (sttSocket && sttSocket.readyState === WebSocket.OPEN) return;
   const apiKey = openKey || '';
   const url = 'wss://api.openai.com/v1/realtime?intent=transcription';
@@ -223,53 +228,38 @@ const connectSocket = async () => {
       session: {
         input_audio_format: 'pcm16',
         input_audio_transcription: {
-          model: 'gpt-4o-mini-transcribe',
+          model:
+            typed === 'speaker'
+              ? 'gpt-4o-mini-transcribe'
+              : 'gpt-4o-mini-transcribe',
           prompt: '',
-          language: 'en',
+          language: typed === 'speaker' ? 'en' : 'ko',
         },
         turn_detection: {
           type: 'server_vad',
           threshold: 0.5,
           prefix_padding_ms: 200,
-          silence_duration_ms: 80,
+          silence_duration_ms: 100,
         },
-        input_audio_noise_reduction: { type: 'near_field' },
+        input_audio_noise_reduction: {
+          type: typed === 'speaker' ? 'near_field' : 'near_field',
+        },
       },
     };
 
     sttSocket?.send(JSON.stringify(initMsg));
+
     console.log('\n\nSocket setting update\n\n');
-    // Heartbeat
+    // Heartbeat 30s
     heartbeat = setInterval(() => {
       if (sttSocket?.readyState === WebSocket.OPEN) sttSocket.ping();
-    }, 30000);
+    }, 30 * 1000);
   });
 
   // 예: delta를 100ms 안에 모아서 전달
-  let deltaBuffer: string[] = [];
-  let deltaTimeout: NodeJS.Timeout | null = null;
   let inactivityTimer: NodeJS.Timeout | null = null;
 
-  const TIMEOUT_DELTA = 100;
   const TIMEOUT_INACTIVITY = 2000;
-  const STOP_WORDS = ['.', '?', '!'];
-
-  const sendBuffer = (buf: string[]) => {
-    scriptWindow?.webContents.send('send-transcript', {
-      type: 'delta',
-      text: buf.join(''),
-    });
-  };
-
-  const resetInactivityTimer = () => {
-    if (inactivityTimer) clearTimeout(inactivityTimer);
-    inactivityTimer = setTimeout(() => {
-      if (deltaBuffer.length > 0) {
-        sendBuffer(deltaBuffer);
-        deltaBuffer = [];
-      }
-    }, TIMEOUT_INACTIVITY);
-  };
 
   // sttSocket.onmessage;
   sttSocket.on('message', (data) => {
@@ -277,18 +267,31 @@ const connectSocket = async () => {
     console.log('delta : ', msg);
 
     if (msg.delta) {
-      // 바로 보내기
-      scriptWindow?.webContents.send('send-transcript', {
-        type: 'delta',
-        text: msg.delta,
-      });
+      if (typed === 'speaker' && scriptWindow)
+        scriptWindow?.webContents.send('send-transcript', {
+          type: 'delta',
+          text: msg.delta,
+        });
+      else if (typed === 'mic' && micWindow)
+        micWindow?.webContents.send('send-transcript', {
+          type: 'delta',
+          text: msg.delta,
+        });
+      else console.log('\n\n\nError Connecting Socket \n\n\n');
 
       // 비활성 타이머도 리셋
       if (inactivityTimer) clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(() => {
-        scriptWindow?.webContents.send('send-transcript', {
-          type: 'finalize', // 혹은 'inactivity-end' 등 원하는 타입
-        });
+        if (typed === 'speaker' && scriptWindow)
+          scriptWindow?.webContents.send('send-transcript', {
+            type: 'finalize', // 혹은 'inactivity-end' 등 원하는 타입
+            text: '',
+          });
+        else if (typed === 'mic' && micWindow)
+          micWindow?.webContents.send('send-transcript', {
+            type: 'finalize', // 혹은 'inactivity-end' 등 원하는 타입
+            text: '',
+          });
       }, TIMEOUT_INACTIVITY);
     }
   });
@@ -300,11 +303,11 @@ const startOrStopSpeakerScripting = async () => {
     // script 시작 + Open.
     console.log('Start scripting of speaker');
     openOverlayWindow();
-    if (mainWin) mainWin.webContents.send('start-speaker-scripting');
+    if (mainWin) mainWin.webContents.send('start-record');
   } else if (scriptWindow !== null) {
     // scripting 중지 + Close. 창은 열려있게 하려다 창을 끄는 것과 scripting을 중지하고 시작하는 로직이 또 분리되면 더 헷갈릴 것 같아서 합침
     console.log('Stop/End scripting of speaker');
-    if (mainWin) mainWin.webContents.send('stop-speaker-scripting');
+    if (mainWin) mainWin.webContents.send('stop-record');
     scriptWindow.close();
   }
 };
@@ -372,9 +375,99 @@ app
   })
   .catch(console.log);
 
+// IPC: Receive audio buffer from renderer
+ipcMain.on('stt-audio-realtime', (event, audioBuffer: string) => {
+  if (sttSocket && sttSocket.readyState === WebSocket.OPEN) {
+    // const base64Audio = Buffer.from(audioBuffer).toString('base64');
+    const msg = {
+      type: 'input_audio_buffer.append',
+      audio: audioBuffer,
+    };
+    sttSocket.send(JSON.stringify(msg));
+  }
+});
+// // IPC: Receive audio buffer from renderer
+// ipcMain.on('stt-audio-realtime', (event, audioBuffer: ArrayBuffer) => {
+//   if (sttSocket && sttSocket.readyState === WebSocket.OPEN) {
+//     const base64Audio = Buffer.from(audioBuffer).toString('base64');
+//     const msg = {
+//       type: 'input_audio_buffer.append',
+//       audio: base64Audio,
+//     };
+//     sttSocket.send(JSON.stringify(msg));
+//   }
+// });
+
+// IPC: Receive audio buffer from renderer
+ipcMain.on('stt-audio', async (event, audioBuffer: ArrayBuffer) => {
+  const pcmBuffer = Buffer.from(audioBuffer);
+
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0); // ChunkID
+  header.writeUInt32LE(36 + pcmBuffer.length, 4); // ChunkSize
+  header.write('WAVE', 8); // Format
+  header.write('fmt ', 12); // Subchunk1ID
+  header.writeUInt32LE(16, 16); // Subchunk1Size (PCM)
+  header.writeUInt16LE(1, 20); // AudioFormat (1 = PCM)
+  header.writeUInt16LE(1, 22); // NumChannels
+  header.writeUInt32LE(16000, 24); // SampleRate
+  header.writeUInt32LE(16000 * 1 * 2, 28); // ByteRate = SampleRate * NumChannels * BitsPerSample/8
+  header.writeUInt16LE(1 * 2, 32); // BlockAlign = NumChannels * BitsPerSample/8
+  header.writeUInt16LE(16, 34); // BitsPerSample
+  header.write('data', 36); // Subchunk2ID
+  header.writeUInt32LE(pcmBuffer.length, 40); // Subchunk2Size
+
+  // 헤더 + PCM 버퍼 합치기
+  const wavBuffer = Buffer.concat([header, pcmBuffer]);
+
+  // 임시 WAV 파일로 저장
+  const tmpPath = path.join(os.tmpdir(), `chunk-${Date.now()}.wav`);
+  fs.writeFileSync(tmpPath, wavBuffer);
+
+  try {
+    console.time('scripting');
+    const res = await client.audio.transcriptions.create({
+      file: fs.createReadStream(tmpPath),
+      model: 'gpt-4o-mini-transcribe',
+      response_format: 'json',
+      // prompt: '',
+    });
+    console.log(' +++ ', res);
+    const text = res.text;
+    if (!text || text === undefined)
+      throw new Error('Wrong transcription return');
+    console.timeEnd('scripting');
+    micWindow?.webContents.send('send-transcript', {
+      type: 'delta',
+      text: text,
+      input_tokens: res.usage?.input_tokens,
+      output_tokens: res.usage?.output_tokens,
+    });
+  } catch (err: any) {
+    console.error('Transcription error', err);
+    micWindow?.webContents.send('send-transcript', {
+      type: 'delta',
+      text: '(transcription error)',
+      input_tokens: 0,
+      output_tokens: 0,
+    });
+  } finally {
+    fs.unlinkSync(tmpPath);
+  }
+
+  // if (sttSocket && sttSocket.readyState === WebSocket.OPEN) {
+  //   const base64Audio = Buffer.from(audioBuffer).toString('base64');
+  //   const msg = {
+  //     type: 'input_audio_buffer.append',
+  //     audio: base64Audio,
+  //   };
+  //   sttSocket.send(JSON.stringify(msg));
+  // }
+});
+
 // IPC: Start STT session
 ipcMain.handle('stt-start', async () => {
-  await connectSocket();
+  await connectSocket('mic');
   if (!sttSocket) return;
 
   sttSocket.on('close', () => {
@@ -383,18 +476,6 @@ ipcMain.handle('stt-start', async () => {
   });
 
   sttSocket.on('error', (err) => console.error('STT socket error:', err));
-});
-
-// IPC: Receive audio buffer from renderer
-ipcMain.on('stt-audio', (event, audioBuffer: ArrayBuffer) => {
-  if (sttSocket && sttSocket.readyState === WebSocket.OPEN) {
-    const base64Audio = Buffer.from(audioBuffer).toString('base64');
-    const msg = {
-      type: 'input_audio_buffer.append',
-      audio: base64Audio,
-    };
-    sttSocket.send(JSON.stringify(msg));
-  }
 });
 
 // IPC: Stop STT session
@@ -430,7 +511,7 @@ ipcMain.on('start-system-audio', async () => {
 
   let audioBuffer = Buffer.alloc(0);
 
-  await connectSocket();
+  await connectSocket('speaker');
 
   if (!sttSocket) {
     console.log('소켓이 안열림');

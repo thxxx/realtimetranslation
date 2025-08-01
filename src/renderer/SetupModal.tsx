@@ -5,6 +5,8 @@ import styled from 'styled-components';
 import { Bolt, CircleUserRound, X } from 'lucide-react';
 import sb from '../lib/\bsupabase';
 import { glass } from './App';
+import { useUserStore } from '../store/userStore';
+import ToggleSwitch, { SwitchType } from './component/Switch';
 
 enum SetOptions {
   CONVENIENCE = 'Convenience',
@@ -17,6 +19,7 @@ const SetupModal = () => {
   const [tempContext, setTempContext] = useState<string>('');
   const [tempPersona, setTempPersona] = useState<string>('');
   const [tempReference, setTempReference] = useState<string>('');
+  const { fontSize, setFontSize } = useUserStore();
 
   const loadData = async (uid: String) => {
     const res = await sb.from('user_context').select('*').eq('user_id', uid);
@@ -34,7 +37,7 @@ const SetupModal = () => {
 
     if (uid) {
       if (uid) setUserId(uid);
-      loadData(uid);
+      // loadData(uid);
     }
   }, []);
 
@@ -100,10 +103,46 @@ const SetupModal = () => {
           <div className="right-cont">
             {selected === SetOptions.CONVENIENCE && (
               <div className="form">
-                <div>Convenience</div>
+                <div className="set-title">Convenience</div>
                 {/* 글씨 크기 조절, 플마 */}
+                <OptionBox>
+                  <div className="left">
+                    <div className="title">Font size</div>
+                    <div className="desc">
+                      You can set font size by shortcut
+                    </div>
+                  </div>
+                  <div className="right">
+                    <div
+                      className="item"
+                      onClick={() => setFontSize(fontSize + 1)}
+                    >
+                      +
+                    </div>
+                    <div
+                      className="item"
+                      onClick={() => setFontSize(fontSize - 1)}
+                    >
+                      -
+                    </div>
+                    <div style={{ marginLeft: '8px', marginRight: '8px' }}>
+                      {fontSize}
+                    </div>
+                  </div>
+                </OptionBox>
                 {/* 위치 세팅 */}
                 {/* 원어 토글 */}
+                <OptionBox>
+                  <div className="left">
+                    <div className="title">Font size</div>
+                    <div className="desc">
+                      You can set font size by shortcut
+                    </div>
+                  </div>
+                  <div className="right">
+                    <ToggleSwitch type={SwitchType.Rounded} />
+                  </div>
+                </OptionBox>
               </div>
             )}
             {selected === SetOptions.ACCOUNT && <div></div>}
@@ -113,6 +152,49 @@ const SetupModal = () => {
     </SetupOuter>
   );
 };
+
+const OptionBox = styled.div`
+  padding: 12px 2px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  flex-direction: row;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  .title {
+    font-size: 0.93em;
+    font-weight: 600;
+  }
+  .desc {
+    font-size: 0.9em;
+    margin-top: 4px;
+    color: rgba(0, 0, 0, 0.6);
+  }
+
+  .right {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+
+    .item {
+      min-width: 28px;
+      min-height: 28px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      margin-right: 4px;
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.06);
+      }
+    }
+  }
+`;
 
 const ListItem = ({
   icon = null,
@@ -157,6 +239,7 @@ const ListItemBox = styled.div<{ chosen: boolean }>`
   gap: 8px;
   align-items: center;
   justify-content: start;
+  font-size: 0.95em;
 
   &:hover {
     background: rgba(0, 0, 0, 0.06);
@@ -180,18 +263,20 @@ const SetupOuter = styled.div`
 `;
 
 const SetupContainer = styled.div`
-  width: 100%;
+  width: 98%;
   height: 100%;
   max-height: 80vh;
   padding: 8px 16px;
   border-radius: 8px;
   display: flex;
-  flex-direction: row;
-  gap: 16px;
+  flex-direction: column;
+  gap: 4px;
   background: white;
   display: flex;
   flex-direction: column;
   font-family: Pretendard;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  box-shadow: 0px 0px 4px 2px rgba(0, 0, 0, 0.1);
 
   .top-cont {
     display: flex;
@@ -226,12 +311,12 @@ const SetupContainer = styled.div`
   }
 
   .left-cont {
-    width: 30%;
+    width: 25%;
     display: flex;
     flex-direction: column;
     border-radius: 8px;
     gap: 4px;
-    padding-top: 20px;
+    padding-top: 28px;
 
     .option {
       cursor: pointer;
@@ -247,19 +332,22 @@ const SetupContainer = styled.div`
   }
 
   .right-cont {
-    width: 60%;
+    width: 71%;
     display: flex;
     flex-direction: column;
     justify-content: start;
     align-items: start;
-    background: rgba(0, 0, 0, 0.04);
+
+    .set-title {
+      font-size: 1.2em;
+      font-weight: 700;
+    }
 
     .form {
       width: 100%;
       display: flex;
       flex-direction: column;
       font-family: Pretendard;
-      padding-top: 8px;
 
       p {
         margin: 0px;
